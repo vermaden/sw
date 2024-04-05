@@ -1,65 +1,73 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -e
 
-# Usage:
-# sw
-#  - start a stopwatch from 0, save start time
-# sw [-r|--resume]
-#  - start a stopwatch from the last saved start time (or current time if no last saved start time exists)
-#  - "-r" stands for --resume
+# usage:
+#   sw
+#     - start stopwatch from 0 and save start time
+#   sw [ -r | --resume ]
+#     - start stopwatch from last saved start time (or current time if no saved start time exists)
 
-function finish {
-  tput cnorm # Restore cursor
+finish() {
+  # restore cursor
+  tput cnorm
   exit 0
 }
 
 trap finish EXIT
 
-# Use GNU date if possible as it's most likely to have nanoseconds available.
-if hash gdate 2>/dev/null; then
-    GNU_DATE=gdate
-elif date --version | grep 'GNU coreutils' >/dev/null; then
-    GNU_DATE=date
+# use GNU date(1) if possible as it has nanoseconds support
+if hash gdate 2> /dev/null
+then
+  GNU_DATE=gdate
 fi
 
-function datef {
-    if [[ -z "$GNU_DATE" ]]; then
-        date "$@"
-    else
-        $GNU_DATE "$@"
-    fi
+__datef() {
+  if [ -z "${GNU_DATE}" ]
+  then
+    date "${@}"
+  else
+    ${GNU_DATE} "${@}"
+  fi
 }
 
-# Display nanoseconsd only if supported
-if datef +%N | grep -q N 2>/dev/null; then
-    DATE_FORMAT="+%H:%M:%S"
+# display nanoseconds only if supported
+if __datef +%N | grep -q N 2> /dev/null
+then
+  echo "INFO: install 'sysutils/coreutils' for nanoseconds support"
+  DATE_FORMAT="+%H:%M:%S"
 else
-    DATE_FORMAT="+%H:%M:%S.%N"
-    NANOS_SUPPORTED=true
+  DATE_FORMAT="+%H:%M:%S.%N"
+  NANOS_SUPPORTED=true
 fi
 
-tput civis # hide cursor
+# hide cursor
+tput civis
 
-# If -r is passed, use saved start time from ~/.sw
-if [[ "$1" == "-r" || "$1" == "--resume" ]]; then
-    if [[ ! -f $HOME/.sw ]]; then
-        datef +%s > $HOME/.sw
-    fi
-    START_TIME=$(cat $HOME/.sw)
+# If '-r/--resume' is passed - use saved start time from ~/.sw file
+if [ "${1}" = "-r" -o "${1}" = "--resume" ]
+then
+  if [ ! -f ~/.sw ]
+  then
+    gdate +%s > ~/.sw
+  fi
+  START_TIME=$( cat ~/.sw )
 else
-    START_TIME=$(datef +%s)
-    echo -n $START_TIME > $HOME/.sw
+  START_TIME=$( __datef +%s )
+  echo -n ${START_TIME} > ~/.sw
 fi
 
-# GNU date accepts the input date differently than BSD
-if [[ -z "$GNU_DATE" ]]; then
-    DATE_INPUT="-v-${START_TIME}S"
+# GNU date accepts input date differently than BSD
+if [ -z "${GNU_DATE}" ]
+then
+  DATE_INPUT="-v-${START_TIME}S"
 else
-    DATE_INPUT="--date now-${START_TIME}sec"
+  DATE_INPUT="--date now-${START_TIME}sec"
 fi
 
-while [ true ]; do
-    STOPWATCH=$(TZ=UTC datef $DATE_INPUT $DATE_FORMAT | ( [[ "$NANOS_SUPPORTED" ]] && sed 's/.\{7\}$//' || cat ) )
-    printf "\r\e%s" $STOPWATCH
-    sleep 0.03
+while true
+do
+  STOPWATCH=$( TZ=UTC __datef ${DATE_INPUT} ${DATE_FORMAT} | ( [ "${NANOS_SUPPORTED}" ] && sed 's/.\{7\}$//' || cat ) )
+  printf "\r%s" ${STOPWATCH}
+  sleep 0.03
 done
+
